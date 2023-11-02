@@ -22,31 +22,57 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        java: [17]
     steps:
       - uses: actions/checkout@v2
+        with:
+          submodules: 'recursive'
 
-      - name: Set up JDK 17
+      - name: Set up JDK
         uses: actions/setup-java@v2
         with:
-          java-version: '17'
+          java-version: ${{ matrix.java }}
           distribution: 'temurin'
+          cache: 'gradle'
 
       - name: Grant execute permission for gradlew
+        if: startsWith(runner.os, 'Linux') || startsWith(runner.os, 'macOS')
         run: chmod +x ./gradlew
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Build with Gradle
         run: ./gradlew build
 
       - name: Build Docker image
-        run: docker build . --file Dockerfile --tag cosicdamnjan/webmartapp:latest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker build . --file Dockerfile --tag ${{ secrets.DOCKER_HUB_USERNAME }}/webmartapp:${{ steps.get_version.outputs.version }}
+        env:
+          IMAGE_TAG: ${{ steps.get_version.outputs.version }}
 
       - name: Log in to DockerHub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v1
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Push Docker image to DockerHub
-        run: docker push cosicdamnjan/webmartapp:latest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/webmartapp:${{ steps.get_version.outputs.version }}
+
+      - name: Get project version
+        id: get_version
+        run: echo "::set-output name=version::$(./gradlew properties -q | grep "^version:" | awk '{print $2}')"
