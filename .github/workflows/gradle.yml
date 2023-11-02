@@ -49,4 +49,4 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Push Docker image to DockerHub
-        run: docker push username/webmartapp:latest
+        run: docker push cosicdamnjan/webmartapp:latest
